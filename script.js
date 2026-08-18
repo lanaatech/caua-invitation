@@ -1,4 +1,23 @@
+// Inicialize o Supabase no topo do script.js
+const supabaseUrl = 'https://mvekkwmtbjqhpzdjozjm.supabase.co';
+const supabaseKey = 'sb_publishable_ZvlaKGJMAdOduqa57hgHkQ_5erEOa8w';
+// Mudamos o nome aqui para supabaseClient para não dar conflito com a biblioteca global
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
 lucide.createIcons();
+
+// ==============================================================
+// 1. MENU MOBILE (Hambúrguer)
+// ==============================================================
+function toggleMenu() {
+    const menu = document.getElementById('mobileMenu');
+    if (menu) {
+        menu.classList.toggle('hidden');
+        menu.classList.toggle('flex');
+    }
+}
+
+
 
 // 1. NAVEGAÇÃO SPA E ROLAGEM SUAVE
 function navigateView(viewId, hashTarget = null) {
@@ -11,7 +30,14 @@ function navigateView(viewId, hashTarget = null) {
     const target = document.getElementById(`view-${viewId}`);
     if (target) target.classList.remove('hidden');
 
-    // 3. Lógica de rolagem inteligente
+    // 3. Fechar menu mobile automaticamente ao clicar no link
+    const menu = document.getElementById('mobileMenu');
+    if (menu && !menu.classList.contains('hidden') && window.innerWidth < 768) {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+    }
+
+    // 4. Lógica de rolagem inteligente
     if (hashTarget) {
         // requestAnimationFrame garante que o navegador já desenhou a tela antes de mover
         requestAnimationFrame(() => {
@@ -21,10 +47,10 @@ function navigateView(viewId, hashTarget = null) {
                     const headerOffset = 90; // Altura do seu menu NASA para não cobrir o título
                     const elementPosition = el.getBoundingClientRect().top;
                     const offsetPosition = elementPosition + window.scrollY - headerOffset;
-                    
+
                     window.scrollTo({
-                         top: offsetPosition,
-                         behavior: "smooth" // Agora ele reina sozinho!
+                        top: offsetPosition,
+                        behavior: "smooth" // Agora ele reina sozinho!
                     });
                 }
             }, 50);
@@ -58,7 +84,7 @@ function runCountdown() {
 runCountdown();
 
 // 3. LOGICA DO PIX
-const chavePixExemplo = "caua.nasa@email.com";
+const chavePixExemplo = "71986301866";
 
 function showToast(msg) {
     const toast = document.getElementById('toast');
@@ -116,52 +142,286 @@ function toggleComparecimento(vai) {
     }
 }
 
-// 5. ENVIO DO FORMULÁRIO
-function enviarConfirmacao(e) {
+// Alternância da Escolha de Presente (Passo 6)
+function togglePresente(tipo) {
+    const panelFisico = document.getElementById('panel-presente-fisico');
+    const panelPix = document.getElementById('panel-presente-pix');
+
+    if (tipo === 'fisico') {
+        panelFisico.classList.remove('hidden');
+        panelPix.classList.add('hidden');
+    } else {
+        panelFisico.classList.add('hidden');
+        panelPix.classList.remove('hidden');
+    }
+}
+
+// 5. ENVIO DO FORMULÁRIO (WhatsApp + Banco de Dados + Limpeza)
+async function enviarConfirmacao(e) {
     e.preventDefault();
     const nome = document.getElementById('nomeTitular').value;
     const comparec = document.querySelector('input[name="comparecimento"]:checked').value;
     const faixa = document.getElementById('faixaEtariaTitular').value;
     const telefone = document.getElementById('telefone').value;
 
+    // Captura o tipo de presente selecionado
+    const opcaoPresenteSelecionada = document.querySelector('input[name="tipo_presente"]:checked');
+    const presente = opcaoPresenteSelecionada ? (opcaoPresenteSelecionada.value === 'fisico' ? 'Levar de Casa' : 'PIX') : 'Não informado';
+
     const acomps = [];
+    
+    // Inicia a contagem contando o próprio titular
+    let qtdAdultos = (faixa === 'Adulto' || faixa === 'Adolescente') ? 1 : 0;
+    let qtdCriancas = faixa === 'Criança' ? 1 : 0;
+
+    // Varre a lista de acompanhantes e faz a matemática
     document.querySelectorAll('#listaAcompanhantes > div').forEach(row => {
         const nomeAcomp = row.querySelector('.acomp-nome').value;
         const faixaAcomp = row.querySelector('.acomp-faixa').value;
-        if (nomeAcomp) acomps.push(`${nomeAcomp} (${faixaAcomp})`);
+        if (nomeAcomp) {
+            acomps.push(`${nomeAcomp} (${faixaAcomp})`);
+            if (faixaAcomp === 'Adulto' || faixaAcomp === 'Adolescente') qtdAdultos++;
+            if (faixaAcomp === 'Criança') qtdCriancas++;
+        }
     });
 
+    // Formata o texto que vai para a coluna 'acompanhantes' do banco
+    const temAcompanhante = acomps.length > 0 ? "SIM" : "NÃO";
+    const detalheParaBanco = acomps.length > 0 
+        ? `Tem Acompanhante: ${temAcompanhante} | Total na família: ${qtdAdultos} Adulto(s) e ${qtdCriancas} Criança(s) | Nomes: ${acomps.join(', ')}`
+        : `Tem Acompanhante: ${temAcompanhante} | Total na família: ${qtdAdultos} Adulto(s) e ${qtdCriancas} Criança(s)`;
+
+    // Dados formatados para o Supabase
+    const dadosParaSalvar = {
+        nome: nome,
+        status: comparec,
+        categoria: faixa,
+        telefone: telefone,
+        presente: presente,
+        acompanhantes: detalheParaBanco // Agora enviando o texto rico para o banco!
+    };
+
+    // Usando supabaseClient
+    const { data, error } = await supabaseClient
+        .from('rsvp_caua')
+        .insert([dadosParaSalvar]);
+
+    if (error) {
+        console.error("Erro ao salvar:", error);
+        showToast("Erro de comunicação com a base. Tente novamente.");
+        return; // Interrompe se der erro
+    }
+
+    // Monta a mensagem do WhatsApp
     let msg = `*STATUS DE EMBARQUE - MISSÃO CAUÃ 1 🚀*%0A`;
     msg += `*Tripulante:* ${nome}%0A`;
     msg += `*Confirmação:* ${comparec.toUpperCase()}%0A`;
     msg += `*Categoria:* ${faixa}%0A`;
     msg += `*Comunicador:* ${telefone}%0A`;
+    msg += `*Presente Escolhido:* ${presente}%0A`;
 
     if (acomps.length > 0) {
         msg += `*Tripulação Adicional (${acomps.length}):*%0A- ` + acomps.join('%0A- ');
     }
 
-    const numeroWhatsApp = "5571999999999";
+    const numeroWhatsApp = "5571986301866";
     window.open(`https://api.whatsapp.com/send?phone=${numeroWhatsApp}&text=${msg}`, '_blank');
 
-    showToast("Dados transmitidos com sucesso!");
+    // ==========================================
+    // LIMPEZA DO FORMULÁRIO E MENSAGEM FINAL
+    // ==========================================
+    showToast("Obrigado pela confirmação! Te esperamos na base.");
+    
+    // Reseta todos os inputs
+    document.getElementById('formRsvp').reset();
+    
+    // Apaga os acompanhantes extras que foram adicionados na tela
+    document.getElementById('listaAcompanhantes').innerHTML = '';
+    countAcomp = 0;
+    
+    // Esconde as áreas de presente
+    const panelFisico = document.getElementById('panel-presente-fisico');
+    const panelPix = document.getElementById('panel-presente-pix');
+    if(panelFisico) panelFisico.classList.add('hidden');
+    if(panelPix) panelPix.classList.add('hidden');
+
+    // Volta para a tela inicial suavemente após 2 segundos
+    setTimeout(() => {
+        navigateView('home');
+    }, 2000);
 }
 
-// 6. PREVIEW DE FOTOS
-function previewUpload(event) {
+// 6. PREVIEW E UPLOAD DE FOTOS (Supabase Storage)
+async function previewUpload(event) {
     const files = event.target.files;
     const grid = document.getElementById('gridGaleria');
 
+    if (files.length === 0) return;
+
+    showToast(`Iniciando transmissão de ${files.length} arquivo(s)... ⏳`);
+
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const div = document.createElement('div');
-            div.className = "aspect-square rounded-sm glass-box border border-nasaBlue/50 overflow-hidden relative animate-fade-in bg-black";
-            div.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover" />`;
-            grid.prepend(div);
+
+        // 1. Cria um nome único para a imagem
+        const extensao = file.name.split('.').pop();
+        const nomeArquivo = `${Date.now()}-${Math.random().toString(36).substring(2)}.${extensao}`;
+
+        // 2. Usando supabaseClient
+        const { data, error } = await supabaseClient.storage
+            .from('galeria_caua')
+            .upload(nomeArquivo, file);
+
+        if (error) {
+            console.error('Falha no upload:', error);
+            showToast(`Erro ao transmitir a imagem ${i + 1}`);
+            continue;
         }
-        reader.readAsDataURL(file);
+
+        // 3. Pegando a URL com supabaseClient
+        const { data: publicData } = supabaseClient.storage
+            .from('galeria_caua')
+            .getPublicUrl(nomeArquivo);
+
+        // 4. Cria o "quadro" na tela e insere a foto vinda direto do Supabase
+        const div = document.createElement('div');
+        div.className = "aspect-square rounded-sm glass-box border border-nasaBlue/50 overflow-hidden relative animate-fade-in bg-black";
+        div.innerHTML = `<img src="${publicData.publicUrl}" class="w-full h-full object-cover" />`;
+
+        // Coloca a nova foto como a primeira do grid
+        grid.prepend(div);
     }
-    showToast(`Upload de ${files.length} arquivo(s) concluído`);
+
+    showToast('Upload concluído com sucesso! 🚀');
+}
+
+// ==============================================================
+// 7. FUNÇÃO DE DOWNLOAD DIRETO (Especial para Celulares)
+// ==============================================================
+async function baixarFoto(url, nomeArquivo) {
+    showToast("Baixando imagem... ⏳");
+    try {
+        // Transforma o link da imagem num arquivo local temporário
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // Cria um link escondido, clica nele para baixar e depois destrói
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        link.href = blobUrl;
+        link.download = nomeArquivo || 'missao-caua.jpg';
+        document.body.appendChild(link);
+        link.click();
+        
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(link);
+    } catch (error) {
+        console.error("Erro no download:", error);
+        // Plano B: Se o celular bloquear o fetch, abre a foto numa nova aba
+        window.open(url, '_blank');
+    }
+}
+
+// ==============================================================
+// 8. CARREGAR E EXIBIR FOTOS NA GALERIA 
+// ==============================================================
+async function carregarGaleria() {
+    const grid = document.getElementById('gridGaleria');
+    
+    // Busca os arquivos especificando limites para não travar
+    const { data, error } = await supabaseClient.storage.from('galeria_caua').list('', {
+        limit: 100,
+        sortBy: { column: 'created_at', order: 'desc' }
+    });
+
+    if (error) {
+        console.error('Erro ao carregar galeria:', error);
+        grid.innerHTML = '<p class="col-span-full text-center text-nasaRed text-xs mt-8">Falha na comunicação visual. RLS Bloqueado.</p>';
+        return;
+    }
+
+    grid.innerHTML = ''; // Limpa o aviso de "Acessando banco"
+
+    // Filtra pastas vazias do sistema
+    const arquivosValidos = data.filter(file => file.name !== '.emptyFolderPlaceholder' && file.name !== '');
+
+    if (arquivosValidos.length === 0) {
+        grid.innerHTML = '<p class="col-span-full text-center text-slate-500 text-xs mt-8">Nenhum registro visual encontrado. Seja o primeiro a enviar!</p>';
+        return;
+    }
+
+    arquivosValidos.forEach(file => {
+        const { data: publicData } = supabaseClient.storage.from('galeria_caua').getPublicUrl(file.name);
+        
+        const div = document.createElement('div');
+        // A classe 'group' é necessária para os efeitos de hover
+        div.className = "aspect-square rounded-sm glass-box border border-white/20 overflow-hidden group relative bg-black";
+        
+        // Inserimos a foto e o botão de download
+        div.innerHTML = `
+            <img src="${publicData.publicUrl}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition duration-500" />
+            <button onclick="baixarFoto('${publicData.publicUrl}', '${file.name}')" title="Baixar Imagem" class="absolute bottom-2 right-2 bg-nasaBlue/90 text-white p-2.5 rounded-sm opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity duration-300 hover:bg-nasaBlue z-10 shadow-lg flex items-center justify-center backdrop-blur-sm border border-nasaBlue">
+                <i data-lucide="download" class="w-4 h-4"></i>
+            </button>
+        `;
+        
+        grid.appendChild(div);
+    });
+    
+    // Como criamos ícones novos na tela, mandamos renderizá-los
+    lucide.createIcons();
+}
+// Aciona a busca de fotos assim que o script carrega
+carregarGaleria();
+
+// ==============================================================
+// 9. PREVIEW E UPLOAD DE NOVAS FOTOS
+// ==============================================================
+async function previewUpload(event) {
+    const files = event.target.files;
+    const grid = document.getElementById('gridGaleria');
+
+    if (files.length === 0) return;
+
+    if (grid.innerHTML.includes('Nenhum registro visual encontrado') || grid.innerHTML.includes('Acessando banco')) {
+        grid.innerHTML = '';
+    }
+
+    showToast(`Iniciando transmissão de ${files.length} arquivo(s)... ⏳`);
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        const extensao = file.name.split('.').pop();
+        const nomeArquivo = `${Date.now()}-${Math.random().toString(36).substring(2)}.${extensao}`;
+
+        const { error } = await supabaseClient.storage
+            .from('galeria_caua')
+            .upload(nomeArquivo, file);
+
+        if (error) {
+            console.error('Falha no upload:', error);
+            showToast(`Erro ao transmitir a imagem ${i + 1}`);
+            continue;
+        }
+
+        const { data: publicData } = supabaseClient.storage
+            .from('galeria_caua')
+            .getPublicUrl(nomeArquivo);
+
+        const div = document.createElement('div');
+        div.className = "aspect-square rounded-sm glass-box border border-nasaBlue/50 overflow-hidden relative animate-fade-in bg-black group";
+        div.innerHTML = `
+            <img src="${publicData.publicUrl}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition duration-500" />
+            <button onclick="baixarFoto('${publicData.publicUrl}', '${nomeArquivo}')" title="Baixar Imagem" class="absolute bottom-2 right-2 bg-nasaBlue/90 text-white p-2.5 rounded-sm opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity duration-300 hover:bg-nasaBlue z-10 shadow-lg flex items-center justify-center backdrop-blur-sm border border-nasaBlue">
+                <i data-lucide="download" class="w-4 h-4"></i>
+            </button>
+        `;
+
+        grid.prepend(div);
+    }
+
+    lucide.createIcons();
+    showToast('Upload concluído com sucesso! 🚀');
 }
