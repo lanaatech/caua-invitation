@@ -3,6 +3,8 @@ const supabaseUrl = 'https://mvekkwmtbjqhpzdjozjm.supabase.co';
 const supabaseKey = 'sb_publishable_ZvlaKGJMAdOduqa57hgHkQ_5erEOa8w';
 // Mudamos o nome aqui para supabaseClient para não dar conflito com a biblioteca global
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+// Inicializa o EmailJS com seu User ID
+emailjs.init("fBf19SfZyw7B4yDS_"); 
 
 lucide.createIcons();
 
@@ -156,10 +158,11 @@ function togglePresente(tipo) {
     }
 }
 
-// 5. ENVIO DO FORMULÁRIO (WhatsApp + Banco de Dados + Limpeza)
+// 5. ENVIO DO FORMULÁRIO (WhatsApp + Banco de Dados + EmailJS + Limpeza)
 async function enviarConfirmacao(e) {
     e.preventDefault();
     const nome = document.getElementById('nomeTitular').value;
+    const email = document.getElementById('email').value; // Captura o email
     const comparec = document.querySelector('input[name="comparecimento"]:checked').value;
     const faixa = document.getElementById('faixaEtariaTitular').value;
     const telefone = document.getElementById('telefone').value;
@@ -170,11 +173,10 @@ async function enviarConfirmacao(e) {
 
     const acomps = [];
     
-    // Inicia a contagem contando o próprio titular
+    // Matemática dos acompanhantes
     let qtdAdultos = (faixa === 'Adulto' || faixa === 'Adolescente') ? 1 : 0;
     let qtdCriancas = faixa === 'Criança' ? 1 : 0;
 
-    // Varre a lista de acompanhantes e faz a matemática
     document.querySelectorAll('#listaAcompanhantes > div').forEach(row => {
         const nomeAcomp = row.querySelector('.acomp-nome').value;
         const faixaAcomp = row.querySelector('.acomp-faixa').value;
@@ -185,34 +187,48 @@ async function enviarConfirmacao(e) {
         }
     });
 
-    // Formata o texto que vai para a coluna 'acompanhantes' do banco
     const temAcompanhante = acomps.length > 0 ? "SIM" : "NÃO";
     const detalheParaBanco = acomps.length > 0 
         ? `Tem Acompanhante: ${temAcompanhante} | Total na família: ${qtdAdultos} Adulto(s) e ${qtdCriancas} Criança(s) | Nomes: ${acomps.join(', ')}`
         : `Tem Acompanhante: ${temAcompanhante} | Total na família: ${qtdAdultos} Adulto(s) e ${qtdCriancas} Criança(s)`;
 
-    // Dados formatados para o Supabase
+    // 1️⃣ PREPARAR DADOS PARA O BANCO
     const dadosParaSalvar = {
         nome: nome,
+        email: email, // Nova coluna obrigatória
         status: comparec,
         categoria: faixa,
         telefone: telefone,
         presente: presente,
-        acompanhantes: detalheParaBanco // Agora enviando o texto rico para o banco!
+        acompanhantes: detalheParaBanco
     };
 
-    // Usando supabaseClient
-    const { data, error } = await supabaseClient
-        .from('rsvp_caua')
-        .insert([dadosParaSalvar]);
+    // 2️⃣ SALVAR NO SUPABASE (Apenas 1 vez!)
+    const { error } = await supabaseClient.from('rsvp_caua').insert([dadosParaSalvar]);
 
     if (error) {
-        console.error("Erro ao salvar:", error);
-        showToast("Erro de comunicação com a base. Tente novamente.");
-        return; // Interrompe se der erro
+        if (error.code === '23505') {
+            showToast("⚠️ Atenção: Este e-mail ou telefone já confirmou presença!");
+        } else {
+            console.error("Erro ao salvar:", error);
+            showToast("Erro de comunicação com a base. Tente novamente.");
+        }
+        return; // Interrompe tudo se der erro ou for duplicado
     }
 
-    // Monta a mensagem do WhatsApp
+    // 3️⃣ DISPARO AUTOMÁTICO DE E-MAIL (Só roda se o banco aceitou)
+    const parametrosEmail = {
+        nome_destinatario: nome,
+        email_destinatario: email,
+        mensagem: `Você confirmou sua ${comparec === 'sim' ? 'presença' : 'ausência'} na primeira missão do Cauã! Aguarde o retorno da nossa equipe pelo WhatsApp.`
+    };
+
+    // Lembre-se de colocar seus IDs do EmailJS aqui depois
+    emailjs.send("cauaprimeiraobita", "template_62c364l", parametrosEmail)
+        .then(() => console.log("E-mail automático enviado!"))
+        .catch((err) => console.error("Falha no e-mail:", err));
+
+    // 4️⃣ MONTAR E ABRIR O WHATSAPP
     let msg = `*STATUS DE EMBARQUE - MISSÃO CAUÃ 1 🚀*%0A`;
     msg += `*Tripulante:* ${nome}%0A`;
     msg += `*Confirmação:* ${comparec.toUpperCase()}%0A`;
@@ -226,25 +242,18 @@ async function enviarConfirmacao(e) {
     const numeroWhatsApp = "5571993204274";
     window.open(`https://api.whatsapp.com/send?phone=${numeroWhatsApp}&text=${msg}`, '_blank');
 
-    // ==========================================
-    // LIMPEZA DO FORMULÁRIO E MENSAGEM FINAL
-    // ==========================================
+    // 5️⃣ LIMPEZA DO FORMULÁRIO E MENSAGEM FINAL
     showToast("Obrigado pela confirmação! Te esperamos na base.");
     
-    // Reseta todos os inputs
     document.getElementById('formRsvp').reset();
-    
-    // Apaga os acompanhantes extras que foram adicionados na tela
     document.getElementById('listaAcompanhantes').innerHTML = '';
     countAcomp = 0;
     
-    // Esconde as áreas de presente
     const panelFisico = document.getElementById('panel-presente-fisico');
     const panelPix = document.getElementById('panel-presente-pix');
     if(panelFisico) panelFisico.classList.add('hidden');
     if(panelPix) panelPix.classList.add('hidden');
 
-    // Volta para a tela inicial suavemente após 2 segundos
     setTimeout(() => {
         navigateView('home');
     }, 2000);

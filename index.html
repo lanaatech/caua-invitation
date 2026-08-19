@@ -332,8 +332,8 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                         <div class="space-y-2">
                             <label class="block text-xs font-bold text-slate-300 uppercase tracking-widest">5.
-                                E-mail</label>
-                            <input type="email" id="email" placeholder="tripulante@email.com"
+                                E-mail *</label>
+                            <input type="email" id="email" required placeholder="tripulante@email.com"
                                 class="w-full bg-black border border-white/20 rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-nasaBlue transition font-mono" />
                         </div>
                         <div class="space-y-2">
@@ -461,6 +461,7 @@
 
     <!-- Importação do arquivo JS externo -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="script.js"></script>
 </body>
 
