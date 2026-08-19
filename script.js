@@ -224,7 +224,7 @@ async function enviarConfirmacao(e) {
         msg += `*Tripulação Adicional (${acomps.length}):*%0A- ` + acomps.join('%0A- ');
     }
 
-    const numeroWhatsApp = "5571986301866";
+    const numeroWhatsApp = "5571993204274";
     window.open(`https://api.whatsapp.com/send?phone=${numeroWhatsApp}&text=${msg}`, '_blank');
 
     // ==========================================
