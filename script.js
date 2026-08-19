@@ -218,7 +218,6 @@ async function enviarConfirmacao(e) {
     msg += `*Confirmação:* ${comparec.toUpperCase()}%0A`;
     msg += `*Categoria:* ${faixa}%0A`;
     msg += `*Comunicador:* ${telefone}%0A`;
-    msg += `*Presente Escolhido:* ${presente}%0A`;
 
     if (acomps.length > 0) {
         msg += `*Tripulação Adicional (${acomps.length}):*%0A- ` + acomps.join('%0A- ');
